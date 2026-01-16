@@ -65,3 +65,35 @@ const recipes = [
         category: "pizza"
     }
 ];
+
+// DOM Selection - Get the container where recipes will be displayed
+const recipeContainer = document.querySelector('#recipe-container');
+console.log(recipeContainer);
+
+// Function to create HTML for a single recipe card
+const createRecipeCard = (recipe) => {
+    return `
+        <div class="recipe-card" data-id="${recipe.id}">
+            <h3>${recipe.title}</h3>
+            <div class="recipe-meta">
+                <span>⏱️ ${recipe.time} min</span>
+                <span class="difficulty ${recipe.difficulty}">${recipe.difficulty}</span>
+            </div>
+            <p>${recipe.description}</p>
+        </div>
+    `;
+};
+
+console.log(createRecipeCard(recipes[0]));
+
+// Function to render recipes to the DOM
+const renderRecipes = (recipesToRender) => {
+    const recipeCardsHTML = recipesToRender
+        .map(createRecipeCard)
+        .join('');
+    
+    recipeContainer.innerHTML = recipeCardsHTML;
+};
+
+// Initialize: Render all recipes when page loads
+renderRecipes(recipes);
