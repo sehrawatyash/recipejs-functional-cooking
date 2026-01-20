@@ -14,6 +14,19 @@
     
     <main>
         <section class="controls">
+            <div class="search-favorites-row">
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    placeholder="Search by title or ingredients..." 
+                    autocomplete="off"
+                />
+                <label class="favorites-toggle">
+                    <input type="checkbox" id="favorites-only-toggle">
+                    <span>Show favorites only</span>
+                </label>
+            </div>
+
             <div class="filters">
                 <button data-filter="all">All Recipes</button>
                 <button data-filter="easy">Easy Recipes</button>
@@ -24,6 +37,10 @@
             <div class="sorters">
                 <button data-sort="name">Sort: Name (A–Z)</button>
                 <button data-sort="time">Sort: Time (Fastest First)</button>
+            </div>
+
+            <div class="recipe-counter" id="recipe-counter">
+                Showing 0 of 0 recipes
             </div>
         </section>
 
