@@ -198,15 +198,59 @@ const RecipeApp = (function () {
     const recipeContainer = document.querySelector('#recipe-container');
     const filterButtons = document.querySelectorAll('.filters button');
     const sortButtons = document.querySelectorAll('.sorters button');
+    const searchInput = document.querySelector('#search-input');
+    const favoritesOnlyToggle = document.querySelector('#favorites-only-toggle');
+    const recipeCounter = document.querySelector('#recipe-counter');
 
     // -----------------------
-    // 3. State (filter + sort)
+    // 3. State
     // -----------------------
     let currentFilter = 'all';
     let currentSort = null;
+    let searchQuery = '';
+    let favoritesOnly = false;
+    let favoriteIds = new Set();
+
+    const FAVORITES_STORAGE_KEY = 'recipejs_favorites';
 
     // -----------------------
-    // 4. Recursive step renderer (pure)
+    // 4. Utilities
+    // -----------------------
+    const loadFavoritesFromStorage = () => {
+        try {
+            const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
+            if (!stored) return;
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                favoriteIds = new Set(parsed);
+            }
+        } catch (err) {
+            console.warn('Could not load favorites from storage', err);
+        }
+    };
+
+    const saveFavoritesToStorage = () => {
+        try {
+            const arr = Array.from(favoriteIds);
+            localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(arr));
+        } catch (err) {
+            console.warn('Could not save favorites to storage', err);
+        }
+    };
+
+    const isFavorite = (id) => favoriteIds.has(id);
+
+    // Simple debounce helper: returns a debounced wrapper
+    const debounce = (fn, delay = 300) => {
+        let timeoutId;
+        return (...args) => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => fn(...args), delay);
+        };
+    };
+
+    // -----------------------
+    // 5. Recursive step renderer (pure)
     // -----------------------
     const renderStepsList = (steps) => {
         if (!steps || steps.length === 0) return '';
@@ -225,7 +269,7 @@ const RecipeApp = (function () {
     };
 
     // -----------------------
-    // 5. Card template (pure)
+    // 6. Card template (pure)
     // -----------------------
     const createRecipeCard = (recipe) => {
         const ingredientsHtml = recipe.ingredients && recipe.ingredients.length
@@ -234,12 +278,26 @@ const RecipeApp = (function () {
 
         const stepsHtml = renderStepsList(recipe.steps);
 
+        const favoriteClass = isFavorite(recipe.id) ? 'favorited' : '';
+        const favoriteIcon = isFavorite(recipe.id) ? '♥' : '♡';
+        const favoriteLabel = isFavorite(recipe.id) ? 'Unfavorite' : 'Favorite';
+
         return `
         <div class="recipe-card" data-id="${recipe.id}">
-            <h3>${recipe.title}</h3>
+            <div class="recipe-card-header">
+                <h3>${recipe.title}</h3>
+            </div>
             <div class="recipe-meta">
                 <span>⏱️ ${recipe.time} min</span>
                 <span class="difficulty ${recipe.difficulty}">${recipe.difficulty}</span>
+                <button 
+                    class="favorite-btn ${favoriteClass}" 
+                    data-action="toggle-favorite" 
+                    aria-label="${favoriteLabel}"
+                    title="${favoriteLabel}"
+                >
+                    ${favoriteIcon}
+                </button>
             </div>
             <p>${recipe.description}</p>
 
@@ -262,7 +320,7 @@ const RecipeApp = (function () {
     };
 
     // -----------------------
-    // 6. Pure filter + sort
+    // 7. Pure filters + sort + search
     // -----------------------
     const applyFilter = (recipesList, filterMode) => {
         if (filterMode === 'all') return recipesList;
@@ -290,8 +348,29 @@ const RecipeApp = (function () {
         return copy;
     };
 
+    const applySearch = (recipesList, query) => {
+        const trimmed = query.trim().toLowerCase();
+        if (!trimmed) return recipesList;
+
+        return recipesList.filter((recipe) => {
+            const titleMatch = recipe.title.toLowerCase().includes(trimmed);
+
+            const ingredientsText = (recipe.ingredients || [])
+                .join(' ')
+                .toLowerCase();
+            const ingredientMatch = ingredientsText.includes(trimmed);
+
+            return titleMatch || ingredientMatch;
+        });
+    };
+
+    const applyFavoritesFilter = (recipesList, favoritesOnlyMode) => {
+        if (!favoritesOnlyMode) return recipesList;
+        return recipesList.filter((recipe) => favoriteIds.has(recipe.id));
+    };
+
     // -----------------------
-    // 7. Render + updateDisplay
+    // 8. Render + updateDisplay
     // -----------------------
     const renderRecipes = (recipesToRender) => {
         const recipeCardsHTML = recipesToRender
@@ -301,14 +380,31 @@ const RecipeApp = (function () {
         recipeContainer.innerHTML = recipeCardsHTML;
     };
 
+    const updateRecipeCounter = (visibleCount, totalCount) => {
+        recipeCounter.textContent = `Showing ${visibleCount} of ${totalCount} recipes`;
+    };
+
     const updateDisplay = () => {
-        const filtered = applyFilter(recipes, currentFilter);
-        const sorted = applySort(filtered, currentSort);
-        renderRecipes(sorted);
+        const totalCount = recipes.length;
+
+        // Filter by difficulty/quick
+        let workingList = applyFilter(recipes, currentFilter);
+
+        // Apply favorites-only
+        workingList = applyFavoritesFilter(workingList, favoritesOnly);
+
+        // Apply search
+        workingList = applySearch(workingList, searchQuery);
+
+        // Apply sort
+        workingList = applySort(workingList, currentSort);
+
+        renderRecipes(workingList);
+        updateRecipeCounter(workingList.length, totalCount);
     };
 
     // -----------------------
-    // 8. UI helpers
+    // 9. UI helpers
     // -----------------------
     const setActiveButton = (buttons, attr, value) => {
         buttons.forEach((btn) => {
@@ -320,8 +416,23 @@ const RecipeApp = (function () {
         });
     };
 
+    const toggleFavoriteForCard = (cardElement) => {
+        if (!cardElement) return;
+        const id = Number(cardElement.getAttribute('data-id'));
+        if (!id) return;
+
+        if (favoriteIds.has(id)) {
+            favoriteIds.delete(id);
+        } else {
+            favoriteIds.add(id);
+        }
+
+        saveFavoritesToStorage();
+        updateDisplay();
+    };
+
     // -----------------------
-    // 9. Event wiring
+    // 10. Event wiring
     // -----------------------
     const bindFilterEvents = () => {
         filterButtons.forEach((button) => {
@@ -345,7 +456,27 @@ const RecipeApp = (function () {
         });
     };
 
-    // Event delegation for steps/ingredients toggling
+    const bindSearchEvents = () => {
+        if (!searchInput) return;
+
+        const handleSearchChange = debounce(() => {
+            searchQuery = searchInput.value;
+            updateDisplay();
+        }, 300);
+
+        searchInput.addEventListener('input', handleSearchChange);
+    };
+
+    const bindFavoritesToggleEvent = () => {
+        if (!favoritesOnlyToggle) return;
+
+        favoritesOnlyToggle.addEventListener('change', () => {
+            favoritesOnly = favoritesOnlyToggle.checked;
+            updateDisplay();
+        });
+    };
+
+    // Event delegation for card actions: steps, ingredients, favorites
     const bindCardToggleEvents = () => {
         recipeContainer.addEventListener('click', (event) => {
             const action = event.target.getAttribute('data-action');
@@ -369,15 +500,22 @@ const RecipeApp = (function () {
                     ? 'Show Ingredients'
                     : 'Hide Ingredients';
             }
+
+            if (action === 'toggle-favorite') {
+                toggleFavoriteForCard(card);
+            }
         });
     };
 
     // -----------------------
-    // 10. Public API
+    // 11. Public API
     // -----------------------
     const init = () => {
+        loadFavoritesFromStorage();
         bindFilterEvents();
         bindSortEvents();
+        bindSearchEvents();
+        bindFavoritesToggleEvent();
         bindCardToggleEvents();
         updateDisplay();
     };
